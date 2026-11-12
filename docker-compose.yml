@@ -1,0 +1,110 @@
+name: shortx
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    container_name: shortx-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: shortx
+      POSTGRES_USER: shortx
+      POSTGRES_PASSWORD: shortx
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready checks the server can accept connections; Compose won't
+      # start dependent services until this passes, avoiding the classic
+      # "app crash-loops because Postgres wasn't ready yet" race condition.
+      test: ["CMD-SHELL", "pg_isready -U shortx -d shortx"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [shortx-net]
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: shortx-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [shortx-net]
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shortx-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:postgresql://postgres:5432/shortx
+      DB_USERNAME: shortx
+      DB_PASSWORD: shortx
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set — see .env.example}
+      SHORTX_BASE_URL: ${SHORTX_BASE_URL:-http://localhost:8080}
+    ports:
+      - "8080:8080"
+    networks: [shortx-net]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    container_name: shortx-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app
+    networks: [shortx-net]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: shortx-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks: [shortx-net]
+
+networks:
+  shortx-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  promdata:
+  grafanadata:

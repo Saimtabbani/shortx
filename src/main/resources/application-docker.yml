@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/shortx
+  data:
+    redis:
+      host: redis
+
+logging:
+  level:
+    com.shortx: INFO
+
+springdoc:
+  swagger-ui:
+    enabled: true

@@ -1,0 +1,14 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+springdoc:
+  swagger-ui:
+    enabled: false
+
+shortx:
+  jwt:
+    secret: test-only-secret-key-not-for-production-use-CHANGE_ME
